@@ -16,14 +16,14 @@ from models.ppo import *
 parser = argparse.ArgumentParser()
 parser.add_argument('--map', help='Specify map setting folder.', default='d_kan')
 parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1800)
-parser.add_argument('-mt', '--max_t', type=int, default=1800)
-parser.add_argument('-mepi', '--max_episodes', type=int, default=300)
+parser.add_argument('-mt', '--max_t', type=int, default=1000)
+parser.add_argument('-mepi', '--max_episodes', type=int, default=500)
 parser.add_argument('--agent-num', type=int, default=1)
 parser.add_argument('--action-std', type=float, default=0.6)
 parser.add_argument('--action-std-decay-rate', type=float, default=0.05)
 parser.add_argument('--min-action-std', type=float, default=0.1)
 parser.add_argument('--action-std-decay-freq', type=int, default=2.5e5)
-parser.add_argument('--update-timestep', type=float, default=1800*4)
+parser.add_argument('--update-timestep', type=float, default=1000*4)
 parser.add_argument('--k-epochs', type=int, default=2)
 parser.add_argument('--eps-clip', type=int, default=0.2)
 parser.add_argument('--gamma', type=int, default=0.99)
@@ -62,6 +62,7 @@ for i_episode in range(args.max_episodes):
             action = agent.get_action(concat_obs)
             actions.append(action)
         next_observation, next_obs_people, reward, done, _ = env.step(actions)
+        reward += -0.01*t
         total_reward += reward
         agent.buffer.rewards.append(reward)
         agent.buffer.is_terminals.append(done)
@@ -73,7 +74,7 @@ for i_episode in range(args.max_episodes):
             agent.update()
 
         if time_step % args.action_std_decay_freq == 0:
-            agent.decay_action_std(action_action_std_decay_rate, min_action_std)
+            agent.decay_action_std(args.action_std_decay_rate, args.min_action_std)
 
         observatin = next_observation
         obs_people = next_obs_people
