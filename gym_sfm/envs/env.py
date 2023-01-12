@@ -39,7 +39,7 @@ class GymSFM(gym.Env):
 
     def __init__(self, md, tl, agf='env_default'):
         super(GymSFM, self).__init__()
-        self.fps = 50
+        self.fps = 10
         self.dt = 1.0/self.fps
         self.suspend_limit = self.fps/2
         self.total_step = 0
@@ -199,7 +199,7 @@ class GymSFM(gym.Env):
                 v = math.dist([0,0],actor.v)
                 dis = math.dist(agent.pose, actor.pose)
 
-                if i > 25:
+                if i >= 25:
                     break
 
                 for idx,d in enumerate(human_obs_range):
@@ -356,7 +356,7 @@ class GymSFM(gym.Env):
         map_dir = PARDIR+'/config/map/'+self.map_dir+'/'
         map_file = random.choice(os.listdir(map_dir))
         self.map = self.map_dir + '/' + map_file
-        print(self.map)
+        # print(self.map)
         return map_dir + map_file
 
     def close(self):

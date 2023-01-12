@@ -18,16 +18,16 @@ from pfrl.agents import PPO
 parser = argparse.ArgumentParser()
 parser.add_argument('--map', help='Specify map setting folder.', default='d_kan')
 parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1800)
-parser.add_argument('-mt', '--max_t', type=int, default=1000)
-parser.add_argument('-mepi', '--max_episodes', type=int, default=500)
+parser.add_argument('-mt', '--max_t', type=int, default=10000)
+parser.add_argument('-mepi', '--max_episodes', type=int, default=1000)
 parser.add_argument('--agent-num', type=int, default=1)
 parser.add_argument('--action-std', type=float, default=0.6)
 parser.add_argument('--action-std-decay-rate', type=float, default=0.05)
 parser.add_argument('--min-action-std', type=float, default=0.1)
 parser.add_argument('--action-std-decay-freq', type=int, default=2.5e5)
 parser.add_argument('--update-interval', type=float, default=1000*4)
-parser.add_argument('--batch-size', type=int, default=8)
-parser.add_argument('--epochs', type=int, default=8)
+parser.add_argument('--batch-size', type=int, default=64)
+parser.add_argument('--epochs', type=int, default=32)
 parser.add_argument('--eps-clip', type=int, default=0.2)
 parser.add_argument('--gamma', type=int, default=0.99)
 parser.add_argument('--lr-actor', type=int, default=3e-4)
@@ -87,14 +87,15 @@ vf = pfrl.nn.RecurrentSequential(
     nn.Linear(32, 1),
 )
 
-model = pfrl.nn.Branched(policy, vf)
+# model = pfrl.nn.Branched(policy, vf)
+model = pfrl.nn.RecurrentBranched(policy, vf)
 opt = torch.optim.Adam(model.parameters(), lr=3e-4, eps=1e-5)
 
 agent = PPO(
         model,
         opt,
         obs_normalizer=obs_normalizer,
-        gpu=None,
+        gpu=0,
         update_interval=args.update_interval,
         minibatch_size=args.batch_size,
         epochs=args.epochs,
@@ -103,6 +104,8 @@ agent = PPO(
         standardize_advantages=True,
         gamma=0.995,
         lambd=0.97,
+        recurrent=True,
+        max_recurrent_sequence_len=1000
     )
 
 for i_episode in range(args.max_episodes):
@@ -110,13 +113,14 @@ for i_episode in range(args.max_episodes):
     done = False
     epidode_reward_sum = 0
     total_reward = 0
-
+    t = 0
     for t in range(args.max_t):
         actions = []
         if args.agent_num > 1:
             print("multi agent")
         else:
             concat_obs = np.hstack((observation[0][:1080], obs_people[0]))
+            concat_obs = torch.from_numpy(concat_obs.astype(np.float32)).clone().to(device)
             action = agent.act(concat_obs)
             actions.append(action)
             observation, obs_people, reward, done, _ = env.step(actions)
@@ -124,10 +128,13 @@ for i_episode in range(args.max_episodes):
             total_reward += reward
 
             concat_obs = np.hstack((observation[0][:1080], obs_people[0]))
+            concat_obs = torch.from_numpy(concat_obs.astype(np.float32)).clone().to(device)
+            reset = t == args.max_t
+            if done == 1: done = True
+            else: done = False
             agent.observe(concat_obs, reward, done, reset)
-
-            if done: break
-
+            if done or reset: break
+        t+=1
         env.render()
     env.close()
-    print("total reward: {}".format(total_reward))
+    print("total reward: {}".format(total_reward/t))
