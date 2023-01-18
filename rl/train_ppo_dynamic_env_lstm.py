@@ -12,14 +12,16 @@ import torch
 import torch.optim as optim
 from torch import nn
 import pfrl
+from tqdm import tqdm
 from pfrl import utils
 from pfrl.agents import PPO
+from collections import OrderedDict
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--map', help='Specify map setting folder.', default='d_kan')
+parser.add_argument('--map', help='Specify map setting folder.', default='test_aisle')
 parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1800)
-parser.add_argument('-mt', '--max_t', type=int, default=10000)
-parser.add_argument('-mepi', '--max_episodes', type=int, default=1000)
+parser.add_argument('-mt', '--max_t', type=int, default=1000)
+parser.add_argument('-mepi', '--max_episodes', type=int, default=10000)
 parser.add_argument('--agent-num', type=int, default=1)
 parser.add_argument('--action-std', type=float, default=0.6)
 parser.add_argument('--action-std-decay-rate', type=float, default=0.05)
@@ -55,12 +57,16 @@ def ortho_init(layer, gain):
     nn.init.orthogonal_(layer.weight, gain=gain)
     nn.init.zeros_(layer.bias)
 
+def calc_reward(reward, t, total_ddis):
+    reward += -0.01*t + total_ddis
+    return reward
+
 policy = pfrl.nn.RecurrentSequential(
     nn.Linear(obs_size, 64),
     nn.Tanh(),
     nn.Linear(64, 64),
     nn.Tanh(),
-    nn.LSTM(input_size=64, hidden_size=32),
+    nn.LSTM(input_size=64, hidden_size=32, num_layers = 10),
     nn.Tanh(),
     nn.Linear(32, action_size),
     pfrl.policies.GaussianHeadWithStateIndependentCovariance(
@@ -108,33 +114,40 @@ agent = PPO(
         max_recurrent_sequence_len=1000
     )
 
-for i_episode in range(args.max_episodes):
-    observation, obs_people  = env.reset()
-    done = False
-    epidode_reward_sum = 0
-    total_reward = 0
-    t = 0
-    for t in range(args.max_t):
-        actions = []
-        if args.agent_num > 1:
-            print("multi agent")
-        else:
-            concat_obs = np.hstack((observation[0][:1080], obs_people[0]))
-            concat_obs = torch.from_numpy(concat_obs.astype(np.float32)).clone().to(device)
-            action = agent.act(concat_obs)
-            actions.append(action)
-            observation, obs_people, reward, done, _ = env.step(actions)
-            reward += -0.01*t
-            total_reward += reward
 
-            concat_obs = np.hstack((observation[0][:1080], obs_people[0]))
-            concat_obs = torch.from_numpy(concat_obs.astype(np.float32)).clone().to(device)
-            reset = t == args.max_t
-            if done == 1: done = True
-            else: done = False
-            agent.observe(concat_obs, reward, done, reset)
-            if done or reset: break
-        t+=1
-        env.render()
-    env.close()
-    print("total reward: {}".format(total_reward/t))
+with tqdm(range(args.max_episodes)) as pbar:
+    for i_episode in pbar:
+        observation, obs_people  = env.reset()
+        done = False
+        epidode_reward_sum = 0
+        total_reward = 0
+        total_ddis = 0
+        t = 0
+        for t in range(args.max_t):
+            actions = []
+            if args.agent_num > 1:
+                print("multi agent")
+            else:
+                concat_obs = np.hstack((observation[0][:1080], obs_people[0]))
+                concat_obs = torch.from_numpy(concat_obs.astype(np.float32)).clone().to(device)
+                action = agent.act(concat_obs)
+                actions.append(action)
+                observation, obs_people, reward, done, ddis, _ = env.step(actions)
+                reward = calc_reward(reward, t, total_ddis)
+                total_reward += reward
+
+                concat_obs = np.hstack((observation[0][:1080], obs_people[0]))
+                concat_obs = torch.from_numpy(concat_obs.astype(np.float32)).clone().to(device)
+                reset = t == args.max_t
+                if done == 1: done = True
+                else: done = False
+                agent.observe(concat_obs, reward, done, reset)
+                if done or reset: break
+            t+=1
+            if (1 + i_episode) % 100 == 0:
+                env.render()
+        env.close()
+        # print("total reward: {}".format(total_reward/t))
+        if t == 0:
+            t = 1
+        pbar.set_postfix(OrderedDict(avg_reward=total_reward/t))
