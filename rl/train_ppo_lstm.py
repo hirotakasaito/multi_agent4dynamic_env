@@ -180,7 +180,8 @@ if __name__ == "__main__":
                     if (1 + i_episode) % args.render_interval == 0:
                         env.render()
 
-            writer.add_scalar("avg reward", total_reward/t, i_episode)
+            if i_episode % 5 == 0:
+                writer.add_scalar("avg reward", total_reward/t, i_episode)
             env.close()
             pbar.set_postfix(OrderedDict(avg_reward=total_reward/t))
 
