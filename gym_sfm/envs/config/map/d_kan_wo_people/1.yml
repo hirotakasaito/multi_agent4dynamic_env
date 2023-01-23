@@ -75,68 +75,29 @@ nodes:
     pose: [38,2.0]
   - name: node5
     pose: [20,2.0]
-  - name: node6
-    pose: [2.0,2.0]
-  - name: node7
-    pose: [2.0,17.5]
-  - name: node8
-    pose: [2.0,10]
-  - name: node9
-    pose: [38,2.0]
-  - name: node10
-    pose: [38,10]
-  - name: node11
-    pose: [20,10]
-  - name: node12
-    pose: [9,17.5]
-  - name: node13
-    pose: [25,17.5]
-  - name: node14
-    pose: [9,3.0]
-  - name: node15
-    pose: [25,3.0]
-  - name: node16
-    pose: [16,12]
-  - name: node17
-    pose: [16,8]
-  - name: node18
-    pose: [24,12]
-  - name: node19
-    pose: [24,8]
-  - name: node20
-    pose: [12,17.5]
-  - name: node21
-    pose: [29,17.5]
-  - name: node22
-    pose: [12,3.0]
-  - name: node23
-    pose: [29,3.0]
 
 zones:
   - name: zone1
-    pose: [11.0,18.7]
+    pose: [20.0,10]
     shape: [1,0]
     width: 1.0
   - name: zone2
-    pose: [27,18.7]
+    pose: [2.5,2.5]
     shape: [1,0]
     width: 1
   - name: zone3
-    pose: [11,1.0]
+    pose: [2.5,16.5]
     shape: [0,1]
     width: 1
   - name: zone4
-    pose: [27,1.0]
+    pose: [37.5,2.5]
     shape: [0,1]
     width: 1
   - name: zone5
-    pose: [1.0,10]
+    pose: [37,17]
     shape: [1,0]
-    width: 4
-  - name: zone6
-    pose: [38,10]
-    shape: [1,0]
-    width: 4
+    width: 1
+
 viewer:
   show_nodes: false
   show_zones: false

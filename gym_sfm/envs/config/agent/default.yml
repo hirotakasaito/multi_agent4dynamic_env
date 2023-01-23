@@ -11,5 +11,5 @@ agent:
   mass: 60                  # [kg]
   radius: 0.25              # [m]
   lidar_linear_range: 40.0  # [m]
-  lidar_rad_range: 270.0    # [deg]
+  lidar_rad_range: 180.0    # [deg]
   lidar_rad_step: 0.25       # [deg]

@@ -82,15 +82,16 @@ cdef class Agent():
         self.dis = np.linalg.norm(delta)
         is_goal = True if self.dis < self.radius else False
         self.angle_to_goal = self.calc_angle_to_goal(delta, is_goal)
-        return [is_goal, self.dis, self.angle_to_goal, self.was_dis - self.dis, self.yaw]
+        return [is_goal, self.dis, self.angle_to_goal, self.was_dis - self.dis, self.yaw, delta]
 
     cpdef tuple observation(self, object world, list to_goal_info):
         cdef :
             bint is_collision = False
             list obs = []
         obs = self.raycast(world)
+        obs = obs[1:]
         is_collision = True if min(obs) < (self.radius+0.05)/self.lidar_linear_range else False
-        obs.extend(to_goal_info)
+        # obs.extend(to_goal_info)
         return np.array(obs, dtype=np.float64), is_collision
 
     # Observation by lidar

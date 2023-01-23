@@ -158,6 +158,9 @@ class GymSFM(gym.Env):
         if 'viewer' in self.actor_conf : self.actor_view_conf = self.actor_conf['viewer']
 
         can_people = self.calc_can_obs_human(self.agents, self.actors, obses)
+
+        self.agent_base_pose = self.agents[0].pose #if agent is single.
+
         return obses, can_people
 
     def calc_can_obs_human(self, agents, actors,obses):
@@ -272,6 +275,7 @@ class GymSFM(gym.Env):
         #     elif is_collision : state = 4
         #     reward = self.get_reward(state, *update_result[1:4], *action)
 
+        move_dis = np.linalg.norm(self.agents[0].pose - self.agent_base_pose) #if agent is single
         if len(self.agents) > 0:
             for agent, action in zip(self.agents, actions):
                 update_result = agent.update(action, self.total_step)
@@ -282,33 +286,41 @@ class GymSFM(gym.Env):
                 elif out_of_map : state = 2
                 elif self.total_step > self.step_limit : state = 3
                 elif is_collision : state = 4
-                reward = self.get_reward(state, *update_result[1:4], *action)
+                reward = self.get_reward(state, *update_result[1:4], *action, move_dis)
 
         self.world.Step(1.0/self.fps, 0, 0)
         self.total_step += 1
 
         # return obs, reward, state, self.agent.pose, update_result[-1], {'total_step':self.total_step}
+        angle_to_goal = update_result[2]
+        delta = update_result[-1]
 
-        # can_people = self.calc_can_obs_human(self.agents, self.actors, human_obs_ranges)
         can_people = self.calc_can_obs_human(self.agents, self.actors, obses)
-        return obses, can_people, reward, state, {'total_step':self.total_step}
+        return obses, can_people, reward, state, np.array([delta[0], delta[1], angle_to_goal])
 
-    def get_reward(self, state, dis, angle, ddis, v, omega):
+    def get_reward(self, state, dis, angle, ddis, v, omega, move_dis):
         reward = 0
+        angle = .1/(angle + 1e-3)
+
+        if angle > 1.0:
+            angle = 1.0
+
+        dpose = angle + 50*ddis # + 0.1*move_dis
+
         if state == 0 :
-            reward = -0.01 if v < 1e-3 else ddis
+            reward = -0.01 if v < 1e-3 else dpose
         elif state == 1 :
             # print('--- Goal. ---')
             reward += 5
         elif state == 2 :
             # print('--- Out of map. ---')
-            reward += ddis
+            reward += dpose
         elif state == 3 :
             # print('--- Time out. ---')
-            reward += ddis
+            reward += dpose
         elif state == 4 :
             # print('--- Collition. ---')
-            reward += -5
+            reward = -1
         return reward
 
     def render(self, mode='human', close=False):

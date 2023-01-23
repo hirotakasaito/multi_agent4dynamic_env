@@ -14,22 +14,22 @@ import torch
 import torch.optim as optim
 from torch import nn
 import pfrl
-from torch.utils.tensorboard import SummaryWriter
 from pfrl import utils
 from pfrl.agents import PPO
-from tqdm import tqdm
 from collections import OrderedDict
+from matplotlib import animation
+import matplotlib.pyplot as plt
 
 def args_parse():
     parser = argparse.ArgumentParser()
     parser.add_argument('--map', help='Specify map setting folder.', default='narrow_env')
     parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1000)
     parser.add_argument('-mt', '--max_t', type=int, default=1000)
-    parser.add_argument('-mepi', '--max_episodes', type=int, default=10000)
+    parser.add_argument('-mepi', '--max_episodes', type=int, default=10)
     parser.add_argument('--agent-num', type=int, default=1)
     parser.add_argument('--update-interval', type=float, default=1000*10)
-    parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--epochs', type=int, default=32)
+    parser.add_argument('--batch-size', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--eps-clip', type=int, default=0.2)
     parser.add_argument('--gamma', type=int, default=0.99)
     parser.add_argument('--lr', type=int, default=5e-4)
@@ -43,15 +43,10 @@ def args_parse():
     parser.add_argument('--can-obs-people', type=int, default=5)
 
 
-    parser.add_argument('--save-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_lstm_dynamic")
+    parser.add_argument('--pretrained-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_lstm_dynamic/20230123102218")
+    parser.add_argument('--save-gif-dir', type=str, default="../outputs/")
     args = parser.parse_args()
     return args
-
-def make_save_dir(save_dir):
-    dt_now = datetime.datetime.now()
-    save_dir = os.path.join(save_dir, dt_now.strftime('%Y%m%d%H%M%S'))
-    os.makedirs(os.path.join(save_dir, "weights"))
-    return save_dir
 
 def min_pooling(obs, k):
     n_obs = np.empty(0)
@@ -64,6 +59,17 @@ def min_pooling(obs, k):
             n_obs = np.append(n_obs, min_v)
     return n_obs
 
+def save_frames_as_gif(frames, path='./', filename='gym_animation.gif'):
+
+    plt.figure(figsize=(frames[0].shape[1] / 72.0, frames[0].shape[0] / 72.0), dpi=72)
+
+    patch = plt.imshow(frames[0])
+    plt.axis('off')
+    def animate(i):
+        patch.set_data(frames[i])
+    anim = animation.FuncAnimation(plt.gcf(), animate, frames = len(frames), interval=10)
+    anim.save(os.path.join(path, filename), writer='imagemagick', fps=110)
+
 def calc_reward(reward, t):
     reward += -0.001*t
     return reward
@@ -74,9 +80,7 @@ if __name__ == "__main__":
 
     env = gym.make('gym_sfm-v0', md=args.map, tl=args.time_limit)
 
-    save_dir = make_save_dir(args.save_dir)
-    with open(os.path.join(save_dir,'args.json'), 'w') as f:
-        json.dump(vars(args),f)
+    os.makedirs(os.path.join(args.save_gif_dir,"gif"), exist_ok=True)
 
     if(torch.cuda.is_available()):
         device = torch.device('cuda:0')
@@ -118,6 +122,9 @@ if __name__ == "__main__":
         nn.Linear(args.lstm_hidden_size, 1),
     )
 
+    policy.load_state_dict(torch.load(os.path.join(args.pretrained_dir, 'weights', 'policy.pth')))
+    vf.load_state_dict(torch.load(os.path.join(args.pretrained_dir, 'weights', 'vf.pth')))
+
     model = pfrl.nn.RecurrentBranched(policy, vf)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-5)
 
@@ -138,11 +145,11 @@ if __name__ == "__main__":
         max_recurrent_sequence_len=1000
         )
 
-    writer = SummaryWriter(os.path.join(save_dir, "summary"))
     max_reward = 0.0
 
-    with tqdm(range(args.max_episodes)) as pbar:
-        for i_episode in pbar:
+    with agent.eval_mode():
+        frames = []
+        for i_episode in range(args.max_episodes):
             if args.dynamic_env:
                 observation, people = env.reset()
             else:
@@ -186,19 +193,8 @@ if __name__ == "__main__":
                     if done or reset: break
                     t+=1
 
-                    if (1 + i_episode) % args.render_interval == 0:
-                        env.render()
+                    env.render()
+                    frames.append(env.render(mode="rgb_array"))
 
-            if i_episode % 5 == 0:
-                writer.add_scalar("avg reward", total_reward/t, i_episode)
             env.close()
-            pbar.set_postfix(OrderedDict(avg_reward=total_reward/t))
-
-            if max_reward < (total_reward/t):
-                torch.save(vf.state_dict(), os.path.join(save_dir, "weights", "vf.pth"))
-                torch.save(policy.state_dict(), os.path.join(save_dir, "weights", "policy.pth"))
-
-        torch.save(vf.state_dict(), os.path.join(save_dir, "weights", "final_vf.pth"))
-        torch.save(policy.state_dict(), os.path.join(save_dir, "weights", "final_policy.pth"))
-
-        writer.close()
+    save_frames_as_gif(frames, path=os.path.join(args.save_gif_dir, "gif"))
