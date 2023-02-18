@@ -22,28 +22,28 @@ from collections import OrderedDict
 
 def args_parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--map', help='Specify map setting folder.', default='narrow_env')
+    parser.add_argument('--map', help='Specify map setting folder.', default='midas_env')
     parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1000)
     parser.add_argument('-mt', '--max_t', type=int, default=1000)
     parser.add_argument('-mepi', '--max_episodes', type=int, default=10000)
     parser.add_argument('--agent-num', type=int, default=1)
     parser.add_argument('--update-interval', type=float, default=1000*10)
-    parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--epochs', type=int, default=32)
+    parser.add_argument('--batch-size', type=int, default=32)
+    parser.add_argument('--epochs', type=int, default=32*4)
     parser.add_argument('--eps-clip', type=int, default=0.2)
-    parser.add_argument('--gamma', type=int, default=0.99)
-    parser.add_argument('--lr', type=int, default=5e-4)
+    parser.add_argument('--gamma', type=int, default=0.995)
+    parser.add_argument('--lr', type=int, default=1e-5)
     parser.add_argument('--random-seed', type=int, default=0)
     parser.add_argument('--hidden-size', type=int, default=512)
     parser.add_argument('--lstm-hidden-size', type=int, default=64)
-    parser.add_argument('--render-interval', type=int, default=50)
-    parser.add_argument('--k', type=int, default=20)
+    parser.add_argument('--render-interval', type=int, default=100)
+    parser.add_argument('--k', type=int, default=10)
     parser.add_argument('--num-layers', type=int, default=2)
-    parser.add_argument('--dynamic-env', type=bool, default=True)
-    parser.add_argument('--can-obs-people', type=int, default=5)
+    parser.add_argument('--dynamic-env', type=bool, default=False)
+    parser.add_argument('--midas-env', type=bool, default=True)
+    parser.add_argument('--can-obs-people', type=int, default=2)
 
-
-    parser.add_argument('--save-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_lstm_dynamic")
+    parser.add_argument('--save-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_lstm_midas")
     args = parser.parse_args()
     return args
 
@@ -64,9 +64,34 @@ def min_pooling(obs, k):
             n_obs = np.append(n_obs, min_v)
     return n_obs
 
+def max_pooling(obs, k):
+    n_obs = np.empty(0)
+
+    for idx, v in enumerate(obs):
+        d_obs = []
+        d_obs.append(v)
+        if (idx+1) % k == 0:
+            min_v = max(d_obs)
+            n_obs = np.append(n_obs, min_v)
+    return n_obs
+
 def calc_reward(reward, t):
     reward += -0.001*t
     return reward
+
+def normalize(observation):
+    max_v = np.amax(observation)
+    min_v = np.amin(observation)
+    return np.abs(((observation - min_v) / (max_v - min_v)) - 1 )
+
+class PrintLayer(nn.Module):
+    def __init__(self):
+        super(PrintLayer, self).__init__()
+
+    def forward(self, x):
+        # Do your print / debug stuff here
+        print(x)
+        return x
 
 if __name__ == "__main__":
 
@@ -94,27 +119,28 @@ if __name__ == "__main__":
 
     policy = pfrl.nn.RecurrentSequential(
         nn.Linear(obs_size, args.hidden_size),
-        nn.ReLU(),
+        nn.ELU(),
         nn.Linear(args.hidden_size, args.hidden_size),
-        nn.ReLU(),
+        nn.ELU(),
         nn.LSTM(input_size=args.hidden_size, hidden_size=args.lstm_hidden_size, num_layers=args.num_layers),
-        nn.ReLU(),
+        nn.Tanh(),
         nn.Linear(args.lstm_hidden_size, action_size),
+        nn.Tanh(),
         pfrl.policies.GaussianHeadWithStateIndependentCovariance(
             action_size=action_size,
             var_type="diagonal",
-            var_func=lambda x: torch.exp(2 * x),  # Parameterize log std
+            var_func=lambda x: torch.exp(2*x),  # Parameterize log std
             var_param_init=0,  # log std = 0 => std = 1
         ),
     )
 
     vf = pfrl.nn.RecurrentSequential(
         nn.Linear(obs_size, args.hidden_size),
-        nn.ReLU(),
+        nn.ELU(),
         nn.Linear(args.hidden_size, args.hidden_size),
-        nn.ReLU(),
+        nn.ELU(),
         nn.LSTM(input_size=args.hidden_size, hidden_size=args.lstm_hidden_size),
-        nn.ReLU(),
+        nn.ELU(),
         nn.Linear(args.lstm_hidden_size, 1),
     )
 
@@ -129,13 +155,13 @@ if __name__ == "__main__":
         update_interval=args.update_interval,
         minibatch_size=args.batch_size,
         epochs=args.epochs,
-        clip_eps_vf=None,
+        clip_eps_vf=args.eps_clip,
         entropy_coef=0,
         standardize_advantages=True,
-        gamma=0.995,
+        gamma=args.gamma,
         lambd=0.97,
         recurrent=True,
-        max_recurrent_sequence_len=1000
+        max_recurrent_sequence_len=args.max_t
         )
 
     writer = SummaryWriter(os.path.join(save_dir, "summary"))
@@ -147,7 +173,14 @@ if __name__ == "__main__":
                 observation, people = env.reset()
             else:
                 observation, _ = env.reset()
-            observation = min_pooling(observation[0], args.k)
+
+            if args.midas_env:
+                observation = normalize(observation[0])
+                observation = max_pooling(observation, args.k)
+            else:
+                observation = observation[0]
+                observation = min_pooling(observation, args.k)
+
             if args.dynamic_env:
                 observation = np.concatenate([observation, people[0]], 0)
             action = np.array([0.0,0.0])
@@ -166,8 +199,17 @@ if __name__ == "__main__":
                     x = torch.from_numpy(obs.astype(np.float32)).clone()
                     action = agent.act(x)
                     actions.append(action)
+                    # action = np.array([0.0,0.0])
+                    # actions.append(action)
                     observation, _, reward, done, delta_goal_pose =  env.step(actions)
-                    observation = min_pooling(observation[0], args.k)
+
+                    if args.midas_env:
+                        observation = normalize(observation[0])
+                        observation = max_pooling(observation, args.k)
+
+                    else:
+                        observation = min_pooling(observation[0], args.k)
+
                     reward  = calc_reward(reward, t)
                     total_reward += reward
 

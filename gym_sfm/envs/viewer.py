@@ -63,6 +63,7 @@ class Viewer(rendering.Viewer):
 
     def make_agent(self, agent):
         if agent is None : return
+
         for i in range(len(agent.lidar)):
             p1 = [ float(p)*self.scale for p in agent.lidar[i].p1 ]
             p2 = [ float(p)*self.scale for p in agent.lidar[i].p2 ]

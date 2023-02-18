@@ -80,6 +80,7 @@ cdef class Agent():
         self.was_dis = self.dis
         delta = self.target - self.pose
         self.dis = np.linalg.norm(delta)
+        # is_goal = True if self.dis < self.radius else False
         is_goal = True if self.dis < self.radius else False
         self.angle_to_goal = self.calc_angle_to_goal(delta, is_goal)
         return [is_goal, self.dis, self.angle_to_goal, self.was_dis - self.dis, self.yaw, delta]

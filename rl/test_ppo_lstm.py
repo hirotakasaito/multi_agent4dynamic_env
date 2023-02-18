@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 
 def args_parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--map', help='Specify map setting folder.', default='narrow_env')
+    parser.add_argument('--map', help='Specify map setting folder.', default='midas_env1')
     parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1000)
     parser.add_argument('-mt', '--max_t', type=int, default=1000)
     parser.add_argument('-mepi', '--max_episodes', type=int, default=10)
@@ -34,16 +34,17 @@ def args_parse():
     parser.add_argument('--gamma', type=int, default=0.99)
     parser.add_argument('--lr', type=int, default=5e-4)
     parser.add_argument('--random-seed', type=int, default=0)
-    parser.add_argument('--hidden-size', type=int, default=512)
+    parser.add_argument('--hidden-size', type=int, default=256)
     parser.add_argument('--lstm-hidden-size', type=int, default=64)
     parser.add_argument('--render-interval', type=int, default=50)
-    parser.add_argument('--k', type=int, default=20)
+    parser.add_argument('--k', type=int, default=10)
     parser.add_argument('--num-layers', type=int, default=2)
-    parser.add_argument('--dynamic-env', type=bool, default=True)
+    parser.add_argument('--dynamic-env', type=bool, default=False)
+    parser.add_argument('--midas-env', type=bool, default=True)
     parser.add_argument('--can-obs-people', type=int, default=5)
 
 
-    parser.add_argument('--pretrained-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_lstm_dynamic/20230123102218")
+    parser.add_argument('--pretrained-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_lstm_midas/20230207181212/")
     parser.add_argument('--save-gif-dir', type=str, default="../outputs/")
     args = parser.parse_args()
     return args

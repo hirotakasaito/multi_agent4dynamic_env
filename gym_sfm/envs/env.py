@@ -21,6 +21,9 @@ from gym_sfm.envs.cython.actor import Actor, make_actor_random
 from gym_sfm.envs.cython.agent import Agent, make_agent_random
 from gym_sfm.envs.cython.zone import Zone, make_zone, select_generate_ac_zone, select_generate_ag_zone, check_zone_target_existence
 
+map_max_count = 0
+map_count = 0
+
 def check_name_duplicate(obj):
     name_list = [ o['name'] for o in obj ]
     duplicate = [ name for name in set(name_list) if name_list.count(name) > 1 ]
@@ -73,7 +76,8 @@ class GymSFM(gym.Env):
             self.viewer = None
 
     def reset(self):
-        map_file = self.select_mapfile_randam()
+        # map_file = self.select_mapfile_randam()
+        map_file = self.select_mapfile_order()
         actor_file = 'example/default.yml'
         agent_file = 'default.yml'
         self._destroy()
@@ -89,6 +93,10 @@ class GymSFM(gym.Env):
         self.map_view_conf = {}
         self.agent_view_conf = {}
         self.actor_view_conf = {}
+        self.max_human_obs_range = 10.0#random.uniform(5.5, 6.0)
+        self.min_human_obs_range = 0.5#random.uniform(0.1, 0.3)
+        self.human_obs_resolution = 10
+        self.max_obs_people = 2
 
         map = get_config(map_file)
         if 'size' in map :
@@ -163,38 +171,35 @@ class GymSFM(gym.Env):
 
         return obses, can_people
 
-    def calc_can_obs_human(self, agents, actors,obses):
-        max_human_obs_range = 5.0#random.uniform(5.5, 6.0)
-        min_human_obs_range = 0.3#random.uniform(0.1, 0.3)
-        human_obs_resolution = 10
+    def calc_can_obs_human(self, agents, actors, obses):
         human_obs_ranges = []
+        obs_size = obses[0].size
 
         for obs in obses:
-            obs = obs[:1080] * 40.0
-            obs = obs[180:900] #camera's viewing angle is 120 degree
-            clip_obs = obs.clip(min = min_human_obs_range, max = max_human_obs_range)
+            obs *= 40.0
+            clip_obs = obs.clip(min = self.min_human_obs_range, max = self.max_human_obs_range)
 
             human_obs_range = np.zeros(0)
             for idx, v in enumerate(clip_obs):
-                if idx % human_obs_resolution == 0:
+                if idx % self.human_obs_resolution == 0:
                     human_obs_range = np.append(human_obs_range, v)
             human_obs_ranges.append(human_obs_range)
 
         each_ag_obs_people = []
         for agent, human_obs_range in zip(agents, human_obs_ranges):
-            one_ag_obs_people = np.zeros(25)
+            one_ag_obs_people = np.zeros(self.max_obs_people*5)
             i = 0
             for actor in actors:
                 x = actor.pose[0] - agent.pose[0]
                 y = actor.pose[1] - agent.pose[1]
                 r_yaw = actor.yaw - agent.yaw
-                yaw = agent.yaw + np.pi/2
+                yaw = agent.yaw - np.pi/2
                 trans_pose = np.array([
                     x*np.cos(yaw) - y*np.sin(yaw),
                     x*np.sin(yaw) + y*np.cos(yaw),
                     np.arctan2(np.sin(r_yaw), np.cos(yaw))
                 ])
-                # relative_yaw = math.degrees(np.arctan2(trans_pose[1], trans_pose[0]))
+                relative_yaw = math.degrees(np.arctan2(trans_pose[1], trans_pose[0]))
                 relative_yaw = np.arctan2(trans_pose[1], trans_pose[0])
                 if actor.v[0] < 0.001 and actor.v[0] > -0.001:
                     actor.v[0] = 0.001
@@ -202,11 +207,11 @@ class GymSFM(gym.Env):
                 v = math.dist([0,0],actor.v)
                 dis = math.dist(agent.pose, actor.pose)
 
-                if i >= 25:
+                if i >= self.max_obs_people * 5: #5 is human states
                     break
 
                 for idx,d in enumerate(human_obs_range):
-                    if math.fabs(d - dis) < 1.0 and math.fabs(relative_yaw - (idx*2.5*math.pi/180)) < (15*math.pi/180):
+                    if math.fabs(d - dis) < 1.0 and math.fabs(relative_yaw - ((idx*2.5 - 90.0)*math.pi/180)) < (15*math.pi/180):
                         save_pose_vw = np.array([
                             trans_pose[0],
                             trans_pose[1],
@@ -296,16 +301,18 @@ class GymSFM(gym.Env):
         delta = update_result[-1]
 
         can_people = self.calc_can_obs_human(self.agents, self.actors, obses)
-        return obses, can_people, reward, state, np.array([delta[0], delta[1], angle_to_goal])
+        return obses, can_people, reward, state, np.array([delta[0], delta[1], update_result[4]])
 
     def get_reward(self, state, dis, angle, ddis, v, omega, move_dis):
         reward = 0
-        angle = .1/(angle + 1e-3)
+        # angle = .1/(angle + 1e-3)
+        #
+        # if angle > 1.0:
+        #     angle = 1.0
 
-        if angle > 1.0:
-            angle = 1.0
-
-        dpose = angle + 50*ddis # + 0.1*move_dis
+        # dpose = angle + 100*ddis # + 0.1*move_dis
+        # dpose = 100*ddis # + 0.1*move_dis
+        dpose = 10*ddis # + 0.1*move_dis
 
         if state == 0 :
             reward = -0.01 if v < 1e-3 else dpose
@@ -369,6 +376,19 @@ class GymSFM(gym.Env):
         map_file = random.choice(os.listdir(map_dir))
         self.map = self.map_dir + '/' + map_file
         # print(self.map)
+        return map_dir + map_file
+
+    def select_mapfile_order(self):
+        global map_count
+        global map_max_count
+        map_dir = PARDIR+'/config/map/'+self.map_dir+'/'
+        map_max_count = len(os.listdir(map_dir))
+        map_file = os.listdir(map_dir)[map_count]
+        map_count += 1
+        if map_count >= map_max_count:
+            map_count = 0
+
+        self.map = self.map_dir + '/' + map_file
         return map_dir + map_file
 
     def close(self):
