@@ -22,9 +22,9 @@ import matplotlib.pyplot as plt
 
 def args_parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--map', help='Specify map setting folder.', default='midas_env')
+    parser.add_argument('--map', help='Specify map setting folder.', default='midas_env6')
     parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1000)
-    parser.add_argument('-mt', '--max_t', type=int, default=10000)
+    parser.add_argument('-mt', '--max_t', type=int, default=1000)
     parser.add_argument('-mepi', '--max_episodes', type=int, default=3)
     parser.add_argument('--agent-num', type=int, default=1)
     parser.add_argument('--update-interval', type=float, default=1000*10)
@@ -43,7 +43,7 @@ def args_parse():
     parser.add_argument('--can-obs-people', type=int, default=5)
 
 
-    parser.add_argument('--pretrained-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_midas/20230215232150/")
+    parser.add_argument('--pretrained-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_midas2/20230221174949/")
     parser.add_argument('--save-gif-dir', type=str, default="../outputs/")
     args = parser.parse_args()
     return args
@@ -99,6 +99,17 @@ def normalize(observation):
     min_v = np.amin(observation)
     return np.abs(((observation - min_v) / (max_v - min_v)) - 1 )
 
+def convert_world2robot_frame(delta_goal_pose):
+    x = delta_goal_pose[0]
+    y = delta_goal_pose[1]
+    yaw = delta_goal_pose[2]
+    if yaw > 2*np.pi:
+        yaw = yaw % 2*np.pi
+    trans_pose = np.array([ x*np.cos(yaw) + y*np.sin(yaw),
+                           -x*np.sin(yaw) + y*np.cos(yaw)
+    ])
+    return trans_pose
+
 if __name__ == "__main__":
 
     args = args_parse()
@@ -116,9 +127,9 @@ if __name__ == "__main__":
         print("Device set to : cpu")
 
     if args.dynamic_env:
-        obs_size = int(env.observation_space[0].size / args.k) + 3 + args.can_obs_people*5 #each human has five states
+        obs_size = int(env.observation_space[0].size / args.k) + 2 + args.can_obs_people*5 #each human has five states
     else:
-        obs_size = int(env.observation_space[0].size / args.k) + 3 # 3 is delta goal pose
+        obs_size = int(env.observation_space[0].size / args.k) + 2 # 3 is delta goal pose
     action_size = env.action_space.shape[0]
 
     policy = nn.Sequential(
@@ -199,17 +210,19 @@ if __name__ == "__main__":
                 if t == 0: #for calc delta goal pose
                     actions.append(action)
                     _, _, _, _, delta_goal_pose = env.step(actions)
+                    delta_goal_pose = convert_world2robot_frame(delta_goal_pose)
                 else:
                     obs = np.concatenate([observation, delta_goal_pose], 0)
-                    print(delta_goal_pose)
                     x = torch.from_numpy(obs.astype(np.float32)).clone()
                     action = agent.act(x)
+                    print(action)
 
                     if args.random_noise:
                         action = action_random_noise(action)
 
                     actions.append(action)
                     observation, _, reward, done, delta_goal_pose =  env.step(actions)
+                    delta_goal_pose = convert_world2robot_frame(delta_goal_pose)
 
                     if args.midas_env:
                         observation = normalize(observation[0])

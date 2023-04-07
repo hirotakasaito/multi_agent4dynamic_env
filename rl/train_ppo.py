@@ -22,12 +22,12 @@ from collections import OrderedDict
 
 def args_parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--map', help='Specify map setting folder.', default='midas_env')
+    parser.add_argument('--map', help='Specify map setting folder.', default='midas_env6_180')
     parser.add_argument('-tl', '--time_limit', help='Specify env time limit(sec).', type=int, default=1000)
-    parser.add_argument('-mt', '--max_t', type=int, default=1000)
-    parser.add_argument('-mepi', '--max_episodes', type=int, default=15000)
+    parser.add_argument('-mt', '--max_t', type=int, default=500)
+    parser.add_argument('-mepi', '--max_episodes', type=int, default=10000)
     parser.add_argument('--agent-num', type=int, default=1)
-    parser.add_argument('--update-interval', type=float, default=1000*20)
+    parser.add_argument('--update-interval', type=float, default=500*18)
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--epochs', type=int, default=64*2)
     parser.add_argument('--eps-clip', type=int, default=0.2)
@@ -42,7 +42,7 @@ def args_parse():
     parser.add_argument('--can-obs-people', type=int, default=2)
     parser.add_argument('--random-noise', type=bool, default=True)
 
-    parser.add_argument('--save-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_midas2")
+    parser.add_argument('--save-dir', type=str, default="/share/private/27th/hirotaka_saito/logs/ppo_midas2_180")
     args = parser.parse_args()
     return args
 

@@ -42,7 +42,7 @@ class GymSFM(gym.Env):
 
     def __init__(self, md, tl, agf='env_default'):
         super(GymSFM, self).__init__()
-        self.fps = 10
+        self.fps = 100
         self.dt = 1.0/self.fps
         self.suspend_limit = self.fps/2
         self.total_step = 0
@@ -177,10 +177,9 @@ class GymSFM(gym.Env):
 
         for obs in obses:
             obs *= 40.0
-            clip_obs = obs.clip(min = self.min_human_obs_range, max = self.max_human_obs_range)
 
             human_obs_range = np.zeros(0)
-            for idx, v in enumerate(clip_obs):
+            for idx, v in enumerate(obs):
                 if idx % self.human_obs_resolution == 0:
                     human_obs_range = np.append(human_obs_range, v)
             human_obs_ranges.append(human_obs_range)
@@ -190,17 +189,16 @@ class GymSFM(gym.Env):
             one_ag_obs_people = np.zeros(self.max_obs_people*5)
             i = 0
             for actor in actors:
-                x = actor.pose[0] - agent.pose[0]
-                y = actor.pose[1] - agent.pose[1]
-                r_yaw = actor.yaw - agent.yaw
-                yaw = agent.yaw - np.pi/2
+                ax = actor.pose[0] - agent.pose[0]
+                ay = actor.pose[1] - agent.pose[1]
+                ayaw = agent.yaw
+                relative_yaw = actor.yaw - agent.yaw
                 trans_pose = np.array([
-                    x*np.cos(yaw) - y*np.sin(yaw),
-                    x*np.sin(yaw) + y*np.cos(yaw),
-                    np.arctan2(np.sin(r_yaw), np.cos(yaw))
+                    ax*np.cos(ayaw) + ay*np.sin(ayaw),
+                    -ax*np.sin(ayaw) + ay*np.cos(ayaw),
+                    np.arctan2(np.sin(relative_yaw), np.cos(relative_yaw))
                 ])
-                relative_yaw = math.degrees(np.arctan2(trans_pose[1], trans_pose[0]))
-                relative_yaw = np.arctan2(trans_pose[1], trans_pose[0])
+                relative_yaw = math.degrees(relative_yaw)
                 if actor.v[0] < 0.001 and actor.v[0] > -0.001:
                     actor.v[0] = 0.001
                 w = np.arctan(actor.v[1]/actor.v[0])
@@ -210,18 +208,36 @@ class GymSFM(gym.Env):
                 if i >= self.max_obs_people * 5: #5 is human states
                     break
 
-                for idx,d in enumerate(human_obs_range):
-                    if math.fabs(d - dis) < 1.0 and math.fabs(relative_yaw - ((idx*2.5 - 90.0)*math.pi/180)) < (15*math.pi/180):
-                        save_pose_vw = np.array([
-                            trans_pose[0],
-                            trans_pose[1],
-                            trans_pose[2],
-                            v,
-                            w,
-                        ])
-                        one_ag_obs_people[i:i+5] = save_pose_vw
-                        i +=5
-                        break
+                search_human = True
+                # print(trans_pose[:2])
+                for idx, d in enumerate(human_obs_range):
+                    yaw = math.radians(idx * 4 - 45.0)
+                    # if math.fabs(d - dis) < 5.0 and math.fabs(relative_yaw - ((idx*4 + 45.0)*math.pi/180)) < (15*math.pi/180) and dis <= d:
+                    reso = 0.1
+                    if d <= 8.0:
+                        while search_human:
+                            xy = np.array([d * np.cos(yaw), d * np.sin(yaw)])
+
+                            # if math.fabs(x - ax) < 0.1 and math.fabs(y - ay) < 0.1:
+                            if np.linalg.norm(trans_pose[:2] - xy) < 0.5:
+                                save_pose_vw = np.array([
+                                    trans_pose[0],
+                                    trans_pose[1],
+                                    trans_pose[2],
+                                    v,
+                                    w,
+                                ])
+                                one_ag_obs_people[i:i+5] = save_pose_vw
+                                i +=5
+                                search_human = False
+                                break
+
+                            d -= reso
+                            if d < 0.0 or search_human is not True:
+                                break
+                        if search_human is not True:
+                            break
+
             each_ag_obs_people.append(one_ag_obs_people)
         return each_ag_obs_people
 
@@ -270,7 +286,6 @@ class GymSFM(gym.Env):
         reward = 0
         obses = []
         human_obs_ranges = []
-        # if self.agent is not None :
         #     update_result = self.agent.update(action, self.total_step)
         #     out_of_map = self.check_in_map(self.agent.pose)
         #     obs, is_collision = self.agent.observation(self.world, update_result[1:3])
@@ -315,7 +330,8 @@ class GymSFM(gym.Env):
         dpose = 10*ddis # + 0.1*move_dis
 
         if state == 0 :
-            reward = -0.01 if v < 1e-3 else dpose
+            # reward = -0.01 if v < 1e-3 else dpose
+            reward = dpose
         elif state == 1 :
             # print('--- Goal. ---')
             reward += 5
@@ -327,7 +343,7 @@ class GymSFM(gym.Env):
             reward += dpose
         elif state == 4 :
             # print('--- Collition. ---')
-            reward = -1
+            reward = -5
         return reward
 
     def render(self, mode='human', close=False):
