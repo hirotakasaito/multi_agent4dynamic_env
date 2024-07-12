@@ -1,6 +1,6 @@
 from setuptools import setup
 
-setup(name='gym_sfm',
+setup(name='multi_gym_sfm',
       version='0.0.1',
-      install_requires=['gym']
+      install_requires=['gymnasium']
 )
