@@ -36,8 +36,8 @@ cdef class Agent():
         self.color = np.array(conf['color'])
         self.mass = conf['mass']
         self.lidar_linear_range = conf['lidar_linear_range'] # [m]
-        self.lidar_rad_range = conf['lidar_rad_range']*math.pi/180  # deg -> rad
-        self.lidar_rad_step = conf['lidar_rad_step']*math.pi/180    # deg -> rad
+        self.lidar_rad_range = conf['lidar_range']*math.pi/180  # deg -> rad
+        self.lidar_rad_step = conf['lidar_step']*math.pi/180    # deg -> rad
         self.radius = conf['radius'] # [m]
         self.lidar_point = []
 

@@ -39,7 +39,7 @@ def get_config(config_file):
     return config
 
 class GymSFM(gymnasium.Env):
-    metadata = {'render.modes': ['human', 'rgb_array']}
+    metadata = {'render.modes': ['actor', 'rgb_array']}
 
     def __init__(self, md, tl, agf='env_default'):
         super(GymSFM, self).__init__()
@@ -95,12 +95,10 @@ class GymSFM(gymnasium.Env):
         self.map_view_conf = {}
         self.agent_view_conf = {}
         self.actor_view_conf = {}
-        self.max_human_obs_range = 10.0#random.uniform(5.5, 6.0)
-        self.min_human_obs_range = 0.5#random.uniform(0.1, 0.3)
-        self.human_obs_resolution = 10
         self.max_obs_people = 2
 
         map = get_config(map_file)
+        agent = get_config(os.path.join(PARDIR,"config/agent",agent_file))
         if 'size' in map :
             self.map_scale = map['size']['scale'] if 'scale' in map['size'] else 1
             self.map_width = map['size']['width']/self.map_scale
@@ -132,8 +130,15 @@ class GymSFM(gymnasium.Env):
             if 'convergence_radius' in map['actor'] : self.convergence_radius = map['actor']['convergence_radius']
         if 'agent' in map :
             if self.ag_file != 'env_default' : agent_file = self.ag_file
-            elif 'config_rel_path' in map['agent'] : agent_file = map['agent']['config_rel_path']
+            elif 'config_rel_path' in map['agent'] : 
+                agent_file = map['agent']['config_rel_path']
             if 'max_agent_num' in map['agent'] : self.max_agent_num = map['agent']['max_agent_num']
+            self.lidar_linear_range = agent['agent']['lidar_linear_range']
+            self.lidar_range = agent['agent']['lidar_range']
+            self.lidar_step = agent['agent']['lidar_step']
+            self.actor_observable_range = agent['agent']['actor_observable_range']
+            self.actor_observable_deg_range = agent['agent']['actor_observable_deg_range']
+            self.actor_observable_resolution = agent['agent']['actor_observable_resolution']
 
         self.world.make_walls(self.walls)
 
@@ -173,76 +178,94 @@ class GymSFM(gymnasium.Env):
         #observation_spaceはlidarと人の位置
         obs = spaces.Box(low=-100, high=100, shape=(2,))
         return obs 
+    
+    def detect_actor(self, agent, actor, actor_obs_range):
+        ax = actor.pose[0] - agent.pose[0]
+        ay = actor.pose[1] - agent.pose[1]
+        axy = np.array([ax,ay])
+        ayaw = agent.yaw - math.pi/2
+        relative_yaw = actor.yaw - agent.yaw
+        trans_pose = np.array([
+            ax*np.cos(ayaw) + ay*np.sin(ayaw),
+            -ax*np.sin(ayaw) + ay*np.cos(ayaw),
+            np.arctan2(np.sin(relative_yaw), np.cos(relative_yaw))
+        ])
+        rotate_90 = np.array([
+            [np.cos(-math.pi/2), -1*np.sin(-math.pi/2)],
+            [np.sin(-math.pi/2), np.cos(-math.pi/2)]
+        ])
 
-    def calc_can_obs_human(self, agents, actors, obses):
-        human_obs_ranges = []
-        obs_size = obses[0].size
+        rotate_yaw = np.array([
+            [np.cos(ayaw), -1*np.sin(ayaw)],
+            [np.sin(ayaw), np.cos(ayaw)]
+        ])
+        trans_pose1 = rotate_90 @ rotate_yaw @ axy
+        print(trans_pose1)
+        # trans_pose1 = rotate_yaw @ axy
+        # print("axy:         " +  str(axy))
+        # print("trans_pose1: " + str(trans_pose1))
 
+        # print(trans_pose1)
+
+        # relative_yaw = math.degrees(relative_yaw)
+        if actor.v[0] < 0.001 and actor.v[0] > -0.001:
+            actor.v[0] = 0.001
+        w = np.arctan(actor.v[1]/actor.v[0])
+        v = math.dist([0,0],actor.v)
+
+        detected_actor = []
+        for d in actor_obs_range:
+            #d[0] length 
+            #d[1] index
+            yaw = math.radians(d[1] * self.lidar_step - int(self.actor_observable_deg_range/2))
+            reso = 0.1
+            raycast_len = d[0]
+            if raycast_len <= self.actor_observable_range:
+                while True:
+                    xy = np.array([raycast_len * np.cos(yaw), raycast_len * np.sin(yaw)])
+
+                    if np.linalg.norm(trans_pose1[:2] - xy) < 0.5:
+                        detected_actor = np.array([
+                            trans_pose1[0],
+                            trans_pose1[1],
+                            trans_pose[2],
+                            actor.pose[0],
+                            actor.pose[1],
+                            actor.yaw,
+                            v,
+                            w,
+                        ])
+                        return detected_actor
+
+                    raycast_len -= reso
+                    if raycast_len < 0:
+                        break
+        return detected_actor
+
+    def calc_obs_people(self, agents, actors, obses):
+        actor_obs_ranges = []
+        diff_lidar_actor_obs_range = self.lidar_range - self.actor_observable_deg_range
         for obs in obses:
-            obs *= 40.0
-
-            human_obs_range = np.zeros(0)
+            obs *= self.lidar_linear_range
+            cut_scan_num = int(diff_lidar_actor_obs_range/self.lidar_step/2)
+            obs_num = int(self.lidar_range/self.lidar_step)
+            obs = obs[cut_scan_num:obs_num-cut_scan_num]
+            
+            actor_obs_range = []
             for idx, v in enumerate(obs):
-                if idx % self.human_obs_resolution == 0:
-                    human_obs_range = np.append(human_obs_range, v)
-            human_obs_ranges.append(human_obs_range)
+                if idx % self.actor_observable_resolution == 0:
+                    actor_obs_range.append([v,idx])
+            actor_obs_ranges.append(actor_obs_range)
 
-        each_ag_obs_people = []
-        for agent, human_obs_range in zip(agents, human_obs_ranges):
-            one_ag_obs_people = np.zeros(self.max_obs_people*5)
-            i = 0
+        each_ag_obs_actor = []
+        for agent, actor_obs_range in zip(agents, actor_obs_ranges):
             for actor in actors:
-                ax = actor.pose[0] - agent.pose[0]
-                ay = actor.pose[1] - agent.pose[1]
-                ayaw = agent.yaw
-                relative_yaw = actor.yaw - agent.yaw
-                trans_pose = np.array([
-                    ax*np.cos(ayaw) + ay*np.sin(ayaw),
-                    -ax*np.sin(ayaw) + ay*np.cos(ayaw),
-                    np.arctan2(np.sin(relative_yaw), np.cos(relative_yaw))
-                ])
-                relative_yaw = math.degrees(relative_yaw)
-                if actor.v[0] < 0.001 and actor.v[0] > -0.001:
-                    actor.v[0] = 0.001
-                w = np.arctan(actor.v[1]/actor.v[0])
-                v = math.dist([0,0],actor.v)
                 dis = math.dist(agent.pose, actor.pose)
-
-                if i >= self.max_obs_people * 5: #5 is human states
-                    break
-
-                search_human = True
-                # print(trans_pose[:2])
-                for idx, d in enumerate(human_obs_range):
-                    yaw = math.radians(idx * 4 - 45.0)
-                    # if math.fabs(d - dis) < 5.0 and math.fabs(relative_yaw - ((idx*4 + 45.0)*math.pi/180)) < (15*math.pi/180) and dis <= d:
-                    reso = 0.1
-                    if d <= 8.0:
-                        while search_human:
-                            xy = np.array([d * np.cos(yaw), d * np.sin(yaw)])
-
-                            # if math.fabs(x - ax) < 0.1 and math.fabs(y - ay) < 0.1:
-                            if np.linalg.norm(trans_pose[:2] - xy) < 0.5:
-                                save_pose_vw = np.array([
-                                    trans_pose[0],
-                                    trans_pose[1],
-                                    trans_pose[2],
-                                    v,
-                                    w,
-                                ])
-                                one_ag_obs_people[i:i+5] = save_pose_vw
-                                i +=5
-                                search_human = False
-                                break
-
-                            d -= reso
-                            if d < 0.0 or search_human is not True:
-                                break
-                        if search_human is not True:
-                            break
-
-            each_ag_obs_people.append(one_ag_obs_people)
-        return each_ag_obs_people
+                if dis <= self.actor_observable_range: 
+                    detected_actor = self.detect_actor(agent, actor, actor_obs_range)
+                    if len(detected_actor) != 0:
+                        each_ag_obs_actor.append(detected_actor)
+        return each_ag_obs_actor
 
     def step(self, actions):
         for a in self.actors:
@@ -288,7 +311,6 @@ class GymSFM(gymnasium.Env):
         state = 0
         reward = 0
         obses = []
-        human_obs_ranges = []
         move_dis = np.linalg.norm(self.agents[0].pose - self.agent_base_pose) #if agent is single
         if len(self.agents) > 0:
             for agent, action in zip(self.agents, actions):
@@ -309,9 +331,9 @@ class GymSFM(gymnasium.Env):
         angle_to_goal = update_result[2]
         delta = update_result[-1]
 
-        can_people = self.calc_can_obs_human(self.agents, self.actors, obses)
+        obs_people = self.calc_obs_people(self.agents, self.actors, obses)
         # return {"obses":obses, "can_people":can_people, "reward":reward, "state":state}
-        return obses, can_people,reward, state, {'total_step':self.total_step}
+        return obses, obs_people,reward, state, {'total_step':self.total_step}
 
         # return obses, can_people, reward, state
 
@@ -343,7 +365,7 @@ class GymSFM(gymnasium.Env):
             reward = -5
         return reward
 
-    def render(self, mode='human', close=False):
+    def render(self, mode='actor', close=False):
         if self.viewer is None:
             from multi_gym_sfm.envs.viewer import Viewer
             screen = [ self.screen_width, self.screen_height, self.viewer_scale ]

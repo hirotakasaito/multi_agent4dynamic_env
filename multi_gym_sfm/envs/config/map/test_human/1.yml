@@ -19,22 +19,22 @@ walls:
     pose: [10,0]
     shape: [0,10]
     width: 1
-  - name: wall5
-    pose: [2.5,4.5]
-    shape: [0,2]
-    width: 0.5
-  - name: wall6
-    pose: [4.0,7.0]
-    shape: [2,0]
-    width: 0.5
-  - name: wall7
-    pose: [7.5,4.5]
-    shape: [0,2]
-    width: 0.5
-  - name: wall8
-    pose: [4.0,4.0]
-    shape: [2.0,0]
-    width: 0.5
+  # - name: wall5
+  #   pose: [2.5,4.5]
+  #   shape: [0,2]
+  #   width: 0.5
+  # - name: wall6
+  #   pose: [4.0,7.0]
+  #   shape: [2,0]
+  #   width: 0.5
+  # - name: wall7
+  #   pose: [7.5,4.5]
+  #   shape: [0,2]
+  #   width: 0.5
+  # - name: wall8
+  #   pose: [4.0,4.0]
+  #   shape: [2.0,0]
+  #   width: 0.5
 
 nodes:
   - name: node1
@@ -73,4 +73,4 @@ actor:
   convergence_radius: 1.0
 agent:
   config_rel_path: default.yml
-  max_agent_num: 2
+  max_agent_num: 1

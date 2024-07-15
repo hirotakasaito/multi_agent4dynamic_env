@@ -30,7 +30,7 @@ for i_episode in range(args.max_episodes):
         # actions =  np.random.uniform(-1.0, 1.0, (1, 2))
         actions =  np.zeros((1, 2))
         scans, people, _,agents,yaw  = env.step(actions)
-        print(agents)
+        print(people)
         # scans = env.step(actions)
         env.render()
     env.close()
