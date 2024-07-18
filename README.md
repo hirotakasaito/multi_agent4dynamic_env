@@ -2,4 +2,7 @@
 
 # Demo
 
-![demo][./demo.gif]
+<p align="center">
+<img src="./demo.gif" alt="demogif" width="500"/>
+</p>
+
