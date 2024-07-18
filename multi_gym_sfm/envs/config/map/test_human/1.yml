@@ -57,8 +57,12 @@ zones:
     pose: [4.5,8.5]
     shape: [1,0]
     width: 1
-  - name: zon32
+  - name: zone3
     pose: [4.5,5.5]
+    shape: [1,0]
+    width: 1
+  - name: zone4
+    pose: [1,1]
     shape: [1,0]
     width: 1
 
@@ -69,8 +73,8 @@ viewer:
   show_walls_vertices: false
 actor:
   config_rel_path: train/1.yml
-  max_actor_num: 1
+  max_actor_num: 10
   convergence_radius: 1.0
 agent:
   config_rel_path: default.yml
-  max_agent_num: 1
+  max_agent_num: 2

@@ -16,4 +16,5 @@ agent:
   actor_observable_range: 8 # [m]
   actor_observable_deg_range: 90 # [deg]
   actor_observable_resolution: 10
+  actor_observable_max_num: 5
 

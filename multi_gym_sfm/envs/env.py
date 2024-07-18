@@ -43,7 +43,7 @@ class GymSFM(gymnasium.Env):
 
     def __init__(self, md, tl, agf='env_default'):
         super(GymSFM, self).__init__()
-        self.fps = 100
+        self.fps = 50
         self.dt = 1.0/self.fps
         self.suspend_limit = self.fps/2
         self.total_step = 0
@@ -139,6 +139,7 @@ class GymSFM(gymnasium.Env):
             self.actor_observable_range = agent['agent']['actor_observable_range']
             self.actor_observable_deg_range = agent['agent']['actor_observable_deg_range']
             self.actor_observable_resolution = agent['agent']['actor_observable_resolution']
+            self.actor_observable_max_num = agent['agent']['actor_observable_max_num']
 
         self.world.make_walls(self.walls)
 
@@ -185,11 +186,6 @@ class GymSFM(gymnasium.Env):
         axy = np.array([ax,ay])
         ayaw = agent.yaw - math.pi/2
         relative_yaw = actor.yaw - agent.yaw
-        trans_pose = np.array([
-            ax*np.cos(ayaw) + ay*np.sin(ayaw),
-            -ax*np.sin(ayaw) + ay*np.cos(ayaw),
-            np.arctan2(np.sin(relative_yaw), np.cos(relative_yaw))
-        ])
         rotate_90 = np.array([
             [np.cos(-math.pi/2), -1*np.sin(-math.pi/2)],
             [np.sin(-math.pi/2), np.cos(-math.pi/2)]
@@ -199,15 +195,9 @@ class GymSFM(gymnasium.Env):
             [np.cos(ayaw), -1*np.sin(ayaw)],
             [np.sin(ayaw), np.cos(ayaw)]
         ])
-        trans_pose1 = rotate_90 @ rotate_yaw @ axy
-        print(trans_pose1)
-        # trans_pose1 = rotate_yaw @ axy
-        # print("axy:         " +  str(axy))
-        # print("trans_pose1: " + str(trans_pose1))
+        trans_pose = rotate_90 @ rotate_yaw @ axy
+        trans_pose= np.append(trans_pose ,np.arctan2(np.sin(relative_yaw), np.cos(relative_yaw)))
 
-        # print(trans_pose1)
-
-        # relative_yaw = math.degrees(relative_yaw)
         if actor.v[0] < 0.001 and actor.v[0] > -0.001:
             actor.v[0] = 0.001
         w = np.arctan(actor.v[1]/actor.v[0])
@@ -224,10 +214,10 @@ class GymSFM(gymnasium.Env):
                 while True:
                     xy = np.array([raycast_len * np.cos(yaw), raycast_len * np.sin(yaw)])
 
-                    if np.linalg.norm(trans_pose1[:2] - xy) < 0.5:
+                    if np.linalg.norm(trans_pose[:2] - xy) < 0.5:
                         detected_actor = np.array([
-                            trans_pose1[0],
-                            trans_pose1[1],
+                            trans_pose[0],
+                            trans_pose[1],
                             trans_pose[2],
                             actor.pose[0],
                             actor.pose[1],
@@ -257,15 +247,31 @@ class GymSFM(gymnasium.Env):
                     actor_obs_range.append([v,idx])
             actor_obs_ranges.append(actor_obs_range)
 
-        each_ag_obs_actor = []
+        all_ag_obs_actor = []
         for agent, actor_obs_range in zip(agents, actor_obs_ranges):
+            each_ag_obs_actor = []
             for actor in actors:
                 dis = math.dist(agent.pose, actor.pose)
                 if dis <= self.actor_observable_range: 
                     detected_actor = self.detect_actor(agent, actor, actor_obs_range)
-                    if len(detected_actor) != 0:
+                    if len(detected_actor) != 0 and len(each_ag_obs_actor) < self.actor_observable_max_num:
                         each_ag_obs_actor.append(detected_actor)
-        return each_ag_obs_actor
+            if len(each_ag_obs_actor)<self.actor_observable_max_num:
+                add_zero_list_num = self.actor_observable_max_num - len(each_ag_obs_actor)
+                for i in range(add_zero_list_num):
+                    temp_actor = np.array([
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                    ])
+                    each_ag_obs_actor.append(temp_actor)
+            all_ag_obs_actor.append(each_ag_obs_actor)
+        return np.array(all_ag_obs_actor)
 
     def step(self, actions):
         for a in self.actors:

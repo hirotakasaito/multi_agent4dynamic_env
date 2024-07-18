@@ -148,4 +148,4 @@ actor:
   convergence_radius: 1.0
 agent:
   config_rel_path: default.yml
-  max_agent_num: 1
+  max_agent_num: 4
